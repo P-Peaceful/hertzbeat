@@ -43,12 +43,14 @@ export class StatusPagePublicService {
     return this.http.get<Message<StatusPageOrg>>(status_page_org_public_uri);
   }
 
-  public getStatusPageComponents(): Observable<Message<StatusPageComponentStatus[]>> {
-    return this.http.get<Message<StatusPageComponentStatus[]>>(status_page_component_public_uri);
+  public getStatusPageComponents(startTime?: number, endTime?: number): Observable<Message<StatusPageComponentStatus[]>> {
+    const options = { params: this.buildTimeRangeParams(startTime, endTime) };
+    return this.http.get<Message<StatusPageComponentStatus[]>>(status_page_component_public_uri, options);
   }
 
-  public getStatusPageComponent(componentId: number): Observable<Message<StatusPageComponentStatus>> {
-    return this.http.get<Message<StatusPageComponentStatus>>(`${status_page_component_public_uri}/${componentId}`);
+  public getStatusPageComponent(componentId: number, startTime?: number, endTime?: number): Observable<Message<StatusPageComponentStatus>> {
+    const options = { params: this.buildTimeRangeParams(startTime, endTime) };
+    return this.http.get<Message<StatusPageComponentStatus>>(`${status_page_component_public_uri}/${componentId}`, options);
   }
 
   public getStatusPageIncidents(
@@ -70,5 +72,16 @@ export class StatusPagePublicService {
     }
     const options = { params: httpParams };
     return this.http.get<Message<Page<StatusPageIncident>>>(status_page_incident_public_uri, options);
+  }
+
+  private buildTimeRangeParams(startTime?: number, endTime?: number): HttpParams {
+    let httpParams = new HttpParams();
+    if (startTime != undefined) {
+      httpParams = httpParams.append('startTime', startTime);
+    }
+    if (endTime != undefined) {
+      httpParams = httpParams.append('endTime', endTime);
+    }
+    return httpParams;
   }
 }

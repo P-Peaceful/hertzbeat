@@ -18,6 +18,7 @@
 package org.apache.hertzbeat.manager.service.impl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 
@@ -130,6 +131,22 @@ class StatusPageServiceImplTimeTest {
 
         List<ComponentStatus> result = service.queryComponentsStatus();
         assertEquals(30, result.get(0).getHistory().size());
+    }
+
+    @Test
+    void testCustom24HourWindowSize() {
+        long endTime = Instant.now().toEpochMilli();
+        long startTime = endTime - Duration.ofHours(24).toMillis();
+
+        StatusPageHistory history = history(Instant.ofEpochMilli(endTime - Duration.ofHours(1).toMillis()),
+            CommonConstants.STATUS_PAGE_COMPONENT_STATE_NORMAL);
+
+        when(historyDao.findStatusPageHistoriesByComponentIdAndTimestampBetween(anyLong(), anyLong(), anyLong()))
+            .thenReturn(List.of(history));
+
+        List<ComponentStatus> result = service.queryComponentsStatus(startTime, endTime);
+        assertEquals(24, result.get(0).getHistory().size());
+        assertTrue(result.get(0).getHistory().get(0).getTimestamp() <= endTime);
     }
 
     private StatusPageHistory history(Instant time, int state) {

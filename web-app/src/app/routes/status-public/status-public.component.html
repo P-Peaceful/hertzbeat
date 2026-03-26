@@ -91,6 +91,12 @@
         </span>
       </div>
     </div>
+    <div class="status-container component-range-toolbar">
+      <div class="component-range-label">{{ 'status.public.range' | i18n }}</div>
+      <nz-radio-group [ngModel]="selectedComponentRange" (ngModelChange)="onComponentRangeChange($event)">
+        <label nz-radio-button *ngFor="let option of componentRangeOptions" [nzValue]="option.value">{{ option.label }}</label>
+      </nz-radio-group>
+    </div>
     <div style="margin-top: 20px">
       <div *ngFor="let component of componentStatus" class="component-status br-8">
         <div style="margin: 10px; display: flex; justify-content: space-between">
@@ -123,7 +129,8 @@
           <div
             *ngFor="let historyItem of component.history"
             class="history-block br-8"
-            [style]="'background:' + calculateHistoryBlockRgb(historyItem)"
+            [style.background]="calculateHistoryBlockRgb(historyItem)"
+            [style.width]="getHistoryBlockWidth()"
             nz-popover
             [nzPopoverContent]="contentTemplate"
             nzPopoverPlacement="bottom"
@@ -140,8 +147,8 @@
           </div>
         </div>
         <div style="margin: 10px; display: flex; justify-content: space-between; font-size: 0.75rem">
-          <span>{{ 'status.public.today' | i18n }}</span>
-          <span>{{ 'status.public.30-day' | i18n }}</span>
+          <span>{{ selectedComponentRange === '24h' ? ('status.public.now' | i18n) : ('status.public.today' | i18n) }}</span>
+          <span>{{ getComponentRangeLabel() }}</span>
         </div>
       </div>
     </div>

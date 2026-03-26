@@ -62,15 +62,20 @@ public class StatusPagePublicController {
 
     @GetMapping("/component")
     @Operation(summary = "Query Status Page Components")
-    public ResponseEntity<Message<List<ComponentStatus>>> queryStatusPageComponent() {
-        List<ComponentStatus> componentStatusList = statusPageService.queryComponentsStatus();
+    public ResponseEntity<Message<List<ComponentStatus>>> queryStatusPageComponent(
+            @Parameter(description = "Start Time", example = "1756384301907") @RequestParam(required = false) Long startTime,
+            @Parameter(description = "End Time", example = "1756384301907") @RequestParam(required = false) Long endTime) {
+        List<ComponentStatus> componentStatusList = statusPageService.queryComponentsStatus(startTime, endTime);
         return ResponseEntity.ok(Message.success(componentStatusList));
     }
 
     @GetMapping("/component/{id}")
     @Operation(summary = "Query Status Page Component")
-    public ResponseEntity<Message<ComponentStatus>> queryStatusPageComponent(@PathVariable("id") final long id) {
-        ComponentStatus componentStatus = statusPageService.queryComponentStatus(id);
+    public ResponseEntity<Message<ComponentStatus>> queryStatusPageComponent(
+        @PathVariable final long id,
+        @Parameter(description = "Start Time", example = "1756384301907") @RequestParam(required = false) Long startTime,
+        @Parameter(description = "End Time", example = "1756384301907") @RequestParam(required = false) Long endTime) {
+        ComponentStatus componentStatus = statusPageService.queryComponentStatus(id, startTime, endTime);
         return ResponseEntity.ok(Message.success(componentStatus));
     }
 

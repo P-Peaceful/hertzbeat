@@ -88,12 +88,31 @@ public interface StatusPageService {
     List<ComponentStatus> queryComponentsStatus();
 
     /**
+     * query status page components status in time range.
+     *
+     * @param startTime start timestamp, nullable
+     * @param endTime end timestamp, nullable
+     * @return status page components status
+     */
+    List<ComponentStatus> queryComponentsStatus(Long startTime, Long endTime);
+
+    /**
      * query status page component status.
      *
      * @param id status page component id
      * @return status page component status
      */
     ComponentStatus queryComponentStatus(long id);
+
+    /**
+     * query status page component status in time range.
+     *
+     * @param id status page component id
+     * @param startTime start timestamp, nullable
+     * @param endTime end timestamp, nullable
+     * @return status page component status
+     */
+    ComponentStatus queryComponentStatus(long id, Long startTime, Long endTime);
 
     /**
      * query status page incidents.

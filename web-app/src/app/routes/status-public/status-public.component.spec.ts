@@ -17,25 +17,50 @@
  * under the License.
  */
 
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 
 import { StatusPublicComponent } from './status-public.component';
 
 describe('StatusPublicComponent', () => {
   let component: StatusPublicComponent;
-  let fixture: ComponentFixture<StatusPublicComponent>;
+  let statusPagePublicService: jasmine.SpyObj<any>;
+  let titleService: jasmine.SpyObj<any>;
+  let notifySvc: jasmine.SpyObj<any>;
+  let i18nSvc: { fanyi: jasmine.Spy };
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      declarations: [StatusPublicComponent]
-    }).compileComponents();
+  beforeEach(() => {
+    statusPagePublicService = jasmine.createSpyObj('StatusPagePublicService', ['getStatusPageOrg', 'getStatusPageComponents', 'getStatusPageIncidents']);
+    titleService = jasmine.createSpyObj('TitleService', ['setTitle']);
+    notifySvc = jasmine.createSpyObj('NzNotificationService', ['error']);
+    i18nSvc = {
+      fanyi: jasmine.createSpy('fanyi').and.callFake((key: string) => key)
+    };
 
-    fixture = TestBed.createComponent(StatusPublicComponent);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    statusPagePublicService.getStatusPageOrg.and.returnValue(of({ code: 0, data: { name: 'Test Org' } }));
+    statusPagePublicService.getStatusPageComponents.and.returnValue(of({ code: 0, data: [] }));
+
+    component = new StatusPublicComponent(notifySvc, titleService, statusPagePublicService, i18nSvc as any);
   });
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('should load default 30d range without query params', () => {
+    component.loadStatusPageOrg();
+
+    expect(statusPagePublicService.getStatusPageComponents).toHaveBeenCalledWith(undefined, undefined);
+  });
+
+  it('should reload component status with 24h params after range change', () => {
+    jasmine.clock().install();
+    jasmine.clock().mockDate(new Date('2026-03-26T12:00:00Z'));
+
+    component.onComponentRangeChange('24h');
+
+    const endTime = new Date('2026-03-26T12:00:00Z').getTime();
+    expect(statusPagePublicService.getStatusPageComponents).toHaveBeenCalledWith(endTime - 24 * 60 * 60 * 1000, endTime);
+
+    jasmine.clock().uninstall();
   });
 });

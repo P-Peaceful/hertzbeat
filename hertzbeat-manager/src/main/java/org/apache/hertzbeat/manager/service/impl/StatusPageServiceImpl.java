@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -127,81 +128,15 @@ public class StatusPageServiceImpl implements StatusPageService {
 
     @Override
     public List<ComponentStatus> queryComponentsStatus() {
+        return queryComponentsStatus(null, null);
+    }
+
+    @Override
+    public List<ComponentStatus> queryComponentsStatus(Long startTime, Long endTime) {
         List<StatusPageComponent> components = statusPageComponentDao.findAll();
-        List<ComponentStatus> componentStatusList = new LinkedList<>();
-        for (StatusPageComponent component : components) {
-            ComponentStatus componentStatus = new ComponentStatus();
-            componentStatus.setInfo(component);
-            List<StatusPageHistory> histories = new LinkedList<>();
-            // query today status
-            ZoneId zoneId = ZoneId.systemDefault();
-
-            Instant now = Instant.now();
-            long nowTimestamp = now.toEpochMilli();
-
-            long todayStartTimestamp = now
-                .atZone(zoneId)
-                .toLocalDate()
-                .atStartOfDay(zoneId)
-                .toInstant()
-                .toEpochMilli();
-
-            List<StatusPageHistory> todayStatusPageHistoryList = statusPageHistoryDao
-                    .findStatusPageHistoriesByComponentIdAndTimestampBetween(component.getId(), todayStartTimestamp, nowTimestamp);
-            StatusPageHistory todayStatus = combineOneDayStatusPageHistory(todayStatusPageHistoryList, component, nowTimestamp);
-            histories.add(todayStatus);
-            // query 30d component status history
-            long preTimestamp = now
-                .atZone(zoneId)
-                .toLocalDate()
-                .minusDays(HISTORY_SPAN_DAYS)
-                .atStartOfDay(zoneId)
-                .toInstant()
-                .toEpochMilli();
-
-            List<StatusPageHistory> history = statusPageHistoryDao
-                    .findStatusPageHistoriesByComponentIdAndTimestampBetween(component.getId(), preTimestamp, todayStartTimestamp);
-            LinkedList<StatusPageHistory> historyList = new LinkedList<>(history);
-            historyList.sort((o1, o2) -> Long.compare(o1.getTimestamp(), o2.getTimestamp()));
-            ZonedDateTime end = Instant.ofEpochMilli(todayStartTimestamp)
-                .atZone(zoneId)
-                .minusSeconds(1);   // yesterday 23:59:59 local time
-
-            for (int i = 0; i < HISTORY_SPAN_DAYS; i++) {
-                long endTimestamp = end.toInstant().toEpochMilli();
-
-                long startTimestamp = end.toLocalDate()
-                    .atStartOfDay(zoneId)
-                    .toInstant()
-                    .toEpochMilli();
-
-                List<StatusPageHistory> thisDayHistory = historyList.stream()
-                    .filter(h -> h.getTimestamp() >= startTimestamp && h.getTimestamp() <= endTimestamp)
-                    .collect(Collectors.toList());
-
-                if (thisDayHistory.isEmpty()) {
-                    histories.add(StatusPageHistory.builder()
-                        .timestamp(endTimestamp)
-                        .componentId(component.getId())
-                        .state(CommonConstants.STATUS_PAGE_COMPONENT_STATE_UNKNOWN)
-                        .build());
-                } else if (thisDayHistory.size() == 1) {
-                    histories.add(thisDayHistory.get(0));
-                } else {
-                    StatusPageHistory merged =
-                        combineOneDayStatusPageHistory(thisDayHistory, component, endTimestamp);
-                    histories.add(merged);
-                    statusPageHistoryDao.deleteAll(thisDayHistory);
-                    statusPageHistoryDao.save(merged);
-                }
-
-                end = end.minusDays(1);
-            }
-
-            componentStatus.setHistory(histories);
-            componentStatusList.add(componentStatus);
-        }
-        return componentStatusList;
+        return components.stream()
+                .map(component -> buildComponentStatus(component, startTime, endTime))
+                .toList();
     }
 
     private StatusPageHistory combineOneDayStatusPageHistory(List<StatusPageHistory> statusPageHistories, StatusPageComponent component, long nowTimestamp) {
@@ -241,15 +176,23 @@ public class StatusPageServiceImpl implements StatusPageService {
         return todayStatus;
     }
 
-    @Override
-    public ComponentStatus queryComponentStatus(long id) {
-        StatusPageComponent component = statusPageComponentDao.findById(id)
-            .orElseThrow(() -> new IllegalArgumentException("component not found"));
-
+    private ComponentStatus buildComponentStatus(StatusPageComponent component, Long startTime, Long endTime) {
         ComponentStatus componentStatus = new ComponentStatus();
         componentStatus.setInfo(component);
-        List<StatusPageHistory> histories = new LinkedList<>();
 
+        List<StatusPageHistory> histories;
+        if (startTime != null) {
+            histories = queryComponentHistoriesByRange(component, startTime, endTime);
+        } else {
+            histories = queryComponentHistoriesByDefaultWindow(component);
+        }
+
+        componentStatus.setHistory(histories);
+        return componentStatus;
+    }
+
+    private List<StatusPageHistory> queryComponentHistoriesByDefaultWindow(StatusPageComponent component) {
+        List<StatusPageHistory> histories = new LinkedList<>();
         ZoneId zoneId = ZoneId.systemDefault();
 
         Instant now = Instant.now();
@@ -262,17 +205,11 @@ public class StatusPageServiceImpl implements StatusPageService {
             .toInstant()
             .toEpochMilli();
 
-        // Today
-        List<StatusPageHistory> todayStatusPageHistoryList =
-            statusPageHistoryDao.findStatusPageHistoriesByComponentIdAndTimestampBetween(
-                component.getId(), todayStartTimestamp, nowTimestamp);
-
-        StatusPageHistory todayStatus =
-            combineOneDayStatusPageHistory(todayStatusPageHistoryList, component, nowTimestamp);
-
+        List<StatusPageHistory> todayStatusPageHistoryList = statusPageHistoryDao
+                .findStatusPageHistoriesByComponentIdAndTimestampBetween(component.getId(), todayStartTimestamp, nowTimestamp);
+        StatusPageHistory todayStatus = combineOneDayStatusPageHistory(todayStatusPageHistoryList, component, nowTimestamp);
         histories.add(todayStatus);
 
-        // Previous HISTORY_SPAN_DAYS days (excluding today)
         long preTimestamp = now
             .atZone(zoneId)
             .toLocalDate()
@@ -281,20 +218,16 @@ public class StatusPageServiceImpl implements StatusPageService {
             .toInstant()
             .toEpochMilli();
 
-        List<StatusPageHistory> history =
-            statusPageHistoryDao.findStatusPageHistoriesByComponentIdAndTimestampBetween(
-                component.getId(), preTimestamp, todayStartTimestamp);
-
+        List<StatusPageHistory> history = statusPageHistoryDao
+                .findStatusPageHistoriesByComponentIdAndTimestampBetween(component.getId(), preTimestamp, todayStartTimestamp);
         LinkedList<StatusPageHistory> historyList = new LinkedList<>(history);
-        historyList.sort((o1, o2) -> Long.compare(o1.getTimestamp(), o2.getTimestamp()));
-
+        historyList.sort(Comparator.comparingLong(StatusPageHistory::getTimestamp));
         ZonedDateTime end = Instant.ofEpochMilli(todayStartTimestamp)
             .atZone(zoneId)
-            .minusSeconds(1);   // yesterday 23:59:59 local time
+            .minusSeconds(1);
 
         for (int i = 0; i < HISTORY_SPAN_DAYS; i++) {
             long endTimestamp = end.toInstant().toEpochMilli();
-
             long startTimestamp = end.toLocalDate()
                 .atStartOfDay(zoneId)
                 .toInstant()
@@ -313,8 +246,7 @@ public class StatusPageServiceImpl implements StatusPageService {
             } else if (thisDayHistory.size() == 1) {
                 histories.add(thisDayHistory.get(0));
             } else {
-                StatusPageHistory merged =
-                    combineOneDayStatusPageHistory(thisDayHistory, component, endTimestamp);
+                StatusPageHistory merged = combineOneDayStatusPageHistory(thisDayHistory, component, endTimestamp);
                 histories.add(merged);
                 statusPageHistoryDao.deleteAll(thisDayHistory);
                 statusPageHistoryDao.save(merged);
@@ -322,9 +254,66 @@ public class StatusPageServiceImpl implements StatusPageService {
 
             end = end.minusDays(1);
         }
+        return histories;
+    }
 
-        componentStatus.setHistory(histories);
-        return componentStatus;
+    private List<StatusPageHistory> queryComponentHistoriesByRange(StatusPageComponent component, Long startTime, Long endTime) {
+        long rangeStartTime = startTime;
+        long rangeEndTime = endTime == null ? System.currentTimeMillis() : endTime;
+        if (rangeEndTime < rangeStartTime) {
+            rangeEndTime = rangeStartTime;
+        }
+
+        List<StatusPageHistory> rawHistories = statusPageHistoryDao
+                .findStatusPageHistoriesByComponentIdAndTimestampBetween(component.getId(), rangeStartTime, rangeEndTime);
+        LinkedList<StatusPageHistory> historyList = new LinkedList<>(rawHistories);
+        historyList.sort(Comparator.comparingLong(StatusPageHistory::getTimestamp));
+
+        long rangeDuration = rangeEndTime - rangeStartTime;
+        long bucketDuration = rangeDuration <= 24L * 60 * 60 * 1000 ? 60L * 60 * 60 * 1000 : 24L * 60 * 60 * 1000;
+        int bucketCount = Math.max(1, (int) Math.ceil((double) rangeDuration / bucketDuration));
+
+        List<StatusPageHistory> histories = new ArrayList<>(bucketCount);
+        long bucketEnd = rangeEndTime;
+        for (int i = 0; i < bucketCount; i++) {
+            long bucketStart = Math.max(rangeStartTime, bucketEnd - bucketDuration + 1);
+            long finalBucketEnd = bucketEnd;
+            List<StatusPageHistory> bucketHistories = historyList.stream()
+                .filter(h -> h.getTimestamp() >= bucketStart && h.getTimestamp() <= finalBucketEnd)
+                .collect(Collectors.toList());
+
+            if (bucketHistories.isEmpty()) {
+                histories.add(StatusPageHistory.builder()
+                    .timestamp(bucketEnd)
+                    .componentId(component.getId())
+                    .state(CommonConstants.STATUS_PAGE_COMPONENT_STATE_UNKNOWN)
+                    .build());
+            } else if (bucketHistories.size() == 1) {
+                StatusPageHistory history = bucketHistories.get(0);
+                history.setTimestamp(bucketEnd);
+                histories.add(history);
+            } else {
+                histories.add(combineOneDayStatusPageHistory(bucketHistories, component, bucketEnd));
+            }
+
+            if (bucketStart <= rangeStartTime) {
+                break;
+            }
+            bucketEnd = bucketStart - 1;
+        }
+        return histories;
+    }
+
+    @Override
+    public ComponentStatus queryComponentStatus(long id) {
+        return queryComponentStatus(id, null, null);
+    }
+
+    @Override
+    public ComponentStatus queryComponentStatus(long id, Long startTime, Long endTime) {
+        StatusPageComponent component = statusPageComponentDao.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("component not found"));
+        return buildComponentStatus(component, startTime, endTime);
     }
 
     @Override

@@ -21,7 +21,7 @@ import { Component, Inject, OnInit } from '@angular/core';
 import { I18NService } from '@core';
 import { ALAIN_I18N_TOKEN, TitleService } from '@delon/theme';
 import { NzNotificationService } from 'ng-zorro-antd/notification';
-import { switchMap } from 'rxjs';
+import { finalize, switchMap } from 'rxjs';
 
 import { Message } from '../../pojo/Message';
 import { StatusPageComponentStatus } from '../../pojo/StatusPageComponentStatus';
@@ -37,6 +37,11 @@ import { StatusPagePublicService } from '../../service/status-page-public.servic
   styleUrls: ['./status-public.component.less']
 })
 export class StatusPublicComponent implements OnInit {
+  readonly componentRangeOptions = [
+    { label: '24h', value: '24h' },
+    { label: '30d', value: '30d' }
+  ] as const;
+
   constructor(
     private notifySvc: NzNotificationService,
     private titleService: TitleService,
@@ -45,12 +50,13 @@ export class StatusPublicComponent implements OnInit {
   ) {}
 
   statusOrg: StatusPageOrg = new StatusPageOrg();
-  componentStatus!: StatusPageComponentStatus[];
-  incidentStatus!: StatusPageIncident[];
+  componentStatus: StatusPageComponentStatus[] = [];
+  incidentStatus: StatusPageIncident[] = [];
   loading: boolean = false;
   incidentLoading: boolean = false;
   // component or incident
   showMode: string = 'component';
+  selectedComponentRange: '24h' | '30d' = '30d';
 
   pageIndex: number = 1;
   pageSize: number = 9999;
@@ -65,7 +71,7 @@ export class StatusPublicComponent implements OnInit {
 
   loadStatusPageOrg() {
     this.loading = true;
-    let loadInit$ = this.statusPagePublicService
+    this.statusPagePublicService
       .getStatusPageOrg()
       .pipe(
         switchMap((message: Message<StatusPageOrg>) => {
@@ -74,29 +80,28 @@ export class StatusPublicComponent implements OnInit {
             this.titleService.setTitle(`${this.statusOrg.name} ${this.i18nSvc.fanyi('menu.advanced.status')}`);
           } else {
             this.statusOrg = new StatusPageOrg();
-            console.log(message.msg);
             this.notifySvc.error(message.msg, '');
             throw new Error(message.msg);
           }
-          return this.statusPagePublicService.getStatusPageComponents();
+          const { startTime, endTime } = this.getComponentTimeRangeParams();
+          return this.statusPagePublicService.getStatusPageComponents(startTime, endTime);
+        }),
+        finalize(() => {
+          this.loading = false;
         })
       )
-      .subscribe(
-        (message: Message<StatusPageComponentStatus[]>) => {
+      .subscribe({
+        next: (message: Message<StatusPageComponentStatus[]>) => {
           if (message.code !== 0) {
             this.notifySvc.error(message.msg, '');
-          } else {
-            this.componentStatus = message.data;
+            return;
           }
-          this.loading = false;
-          loadInit$.unsubscribe();
+          this.componentStatus = message.data;
         },
-        error => {
-          this.loading = false;
-          this.notifySvc.error(error.msg, '');
-          loadInit$.unsubscribe();
+        error: error => {
+          this.notifySvc.error(error?.message ?? error?.msg ?? 'Load status page failed', '');
         }
-      );
+      });
   }
 
   showIncident() {
@@ -109,10 +114,18 @@ export class StatusPublicComponent implements OnInit {
     this.loadStatusPageOrg();
   }
 
+  onComponentRangeChange(range: '24h' | '30d') {
+    if (this.selectedComponentRange === range) {
+      return;
+    }
+    this.selectedComponentRange = range;
+    this.loadStatusPageOrg();
+  }
+
   loadStatusPageIncident() {
     const incidentYear = this.incidentYear.getFullYear();
     this.incidentStartTime = new Date(this.incidentYear.getFullYear(), 0, 1).getTime();
-    if (incidentYear != new Date().getFullYear()) {
+    if (incidentYear !== new Date().getFullYear()) {
       this.incidentEndTime = new Date(this.incidentYear.getFullYear(), 11, 31).getTime();
     } else {
       this.incidentEndTime = -1;
@@ -120,21 +133,23 @@ export class StatusPublicComponent implements OnInit {
     this.incidentLoading = true;
     this.statusPagePublicService
       .getStatusPageIncidents(this.incidentStartTime, this.incidentEndTime, this.pageIndex - 1, this.pageSize)
-      .subscribe(
-        message => {
+      .pipe(
+        finalize(() => {
+          this.incidentLoading = false;
+        })
+      )
+      .subscribe({
+        next: message => {
           if (message.code !== 0) {
             this.notifySvc.error(message.msg, '');
-          } else {
-            let page = message.data;
-            this.incidentStatus = page.content;
+            return;
           }
-          this.incidentLoading = false;
+          this.incidentStatus = message.data.content;
         },
-        error => {
-          this.notifySvc.error(error.msg, '');
-          this.incidentLoading = false;
+        error: error => {
+          this.notifySvc.error(error?.message ?? error?.msg ?? 'Load incidents failed', '');
         }
-      );
+      });
   }
 
   calculateHistoryBlockRgb(history: StatusPageHistory): string {
@@ -143,8 +158,27 @@ export class StatusPublicComponent implements OnInit {
     } else if (history.state == 2) {
       return 'rgb(200 200 200)';
     } else {
-      return `rgb(255, ${(history.uptime * 300).toFixed(0)}, 0)`;
+      return `rgb(255, ${((history.uptime ?? 0) * 300).toFixed(0)}, 0)`;
     }
+  }
+
+  getComponentRangeLabel(): string {
+    return this.selectedComponentRange === '24h' ? this.i18nSvc.fanyi('status.public.24-hour') : this.i18nSvc.fanyi('status.public.30-day');
+  }
+
+  getHistoryBlockWidth(): string {
+    return this.selectedComponentRange === '24h' ? '3.16%' : '2.33%';
+  }
+
+  private getComponentTimeRangeParams(): { startTime?: number; endTime?: number } {
+    if (this.selectedComponentRange === '24h') {
+      const endTime = Date.now();
+      return {
+        startTime: endTime - 24 * 60 * 60 * 1000,
+        endTime
+      };
+    }
+    return {};
   }
 
   getLatestIncidentContentMsg(incidents: StatusPageIncidentContent[]): string {
