@@ -120,7 +120,7 @@ Each release includes bug fixes, security patches, and new features. The release
 
 ### Where can I find old versions?
 
-Previous versions are archived at https://archive.apache.org/dist/incubator/hertzbeat/
+Previous versions are archived at https://archive.apache.org/dist/incubator/hertzbeat
 
 ### How often are new versions released?
 
