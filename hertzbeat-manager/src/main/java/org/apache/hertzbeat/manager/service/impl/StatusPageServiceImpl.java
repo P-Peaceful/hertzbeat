@@ -270,7 +270,7 @@ public class StatusPageServiceImpl implements StatusPageService {
         historyList.sort(Comparator.comparingLong(StatusPageHistory::getTimestamp));
 
         long rangeDuration = rangeEndTime - rangeStartTime;
-        long bucketDuration = rangeDuration <= 24L * 60 * 60 * 1000 ? 60L * 60 * 60 * 1000 : 24L * 60 * 60 * 1000;
+        long bucketDuration = rangeDuration <= 24L * 60 * 60 * 1000 ? 60L * 60 * 1000 : 24L * 60 * 60 * 1000;
         int bucketCount = Math.max(1, (int) Math.ceil((double) rangeDuration / bucketDuration));
 
         List<StatusPageHistory> histories = new ArrayList<>(bucketCount);

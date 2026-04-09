@@ -145,8 +145,25 @@ class StatusPageServiceImplTimeTest {
             .thenReturn(List.of(history));
 
         List<ComponentStatus> result = service.queryComponentsStatus(startTime, endTime);
-        assertEquals(24, result.get(0).getHistory().size());
-        assertTrue(result.get(0).getHistory().get(0).getTimestamp() <= endTime);
+        List<StatusPageHistory> histories = result.get(0).getHistory();
+        assertEquals(24, histories.size());
+        assertTrue(histories.get(0).getTimestamp() <= endTime);
+        assertEquals(Duration.ofHours(1).toMillis(), histories.get(0).getTimestamp() - histories.get(1).getTimestamp());
+    }
+
+    @Test
+    void testCustomWindowLongerThan24HoursUsesDailyBuckets() {
+        long endTime = Instant.now().toEpochMilli();
+        long startTime = endTime - Duration.ofHours(25).toMillis();
+
+        StatusPageHistory history = history(Instant.ofEpochMilli(endTime - Duration.ofHours(1).toMillis()),
+            CommonConstants.STATUS_PAGE_COMPONENT_STATE_NORMAL);
+
+        when(historyDao.findStatusPageHistoriesByComponentIdAndTimestampBetween(anyLong(), anyLong(), anyLong()))
+            .thenReturn(List.of(history));
+
+        List<ComponentStatus> result = service.queryComponentsStatus(startTime, endTime);
+        assertEquals(2, result.get(0).getHistory().size());
     }
 
     private StatusPageHistory history(Instant time, int state) {
